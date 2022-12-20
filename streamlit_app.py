@@ -1,38 +1,51 @@
-from collections import namedtuple
-import altair as alt
-import math
-import pandas as pd
 import streamlit as st
+from datetime import datetime
+import yfinance
+from fbprophet import Prophet
+from fbprophet.plot import plot_plotly
+from plotly import graph_objs as go
 
-"""
-# Welcome to Streamlit!
+START = "2015-01-01"
+Today = date.today().strftime("%Y-%m-%d")
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:
+st.title("Stock Prediction Web App")
 
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
+stocks = {"GOOG", "AAPL", "MSFT", "GME"}
+selected_stock = st.selectbox("Select Stock", stocks)
 
-In the meantime, below is an example of what you can do with just a few lines of code:
-"""
+n_years = st.slider("Years of Prediction:", 1,4)
+period = n_years + 365
 
+# pip install streamlit fbprophet yfinance plotly
 
-with st.echo(code_location='below'):
-    total_points = st.slider("Number of points in spiral", 1, 5000, 2000)
-    num_turns = st.slider("Number of turns in spiral", 1, 100, 9)
+@st.cache
+def load_data(stock):
+        data = yfinance.download(stock, START, TODAY)
+        data.reset_index(inplace=True)
+        return data
 
-    Point = namedtuple('Point', 'x y')
-    data = []
+data = load_data(selected_stock)
 
-    points_per_turn = total_points / num_turns
+st.subheader("Stock Data")
+st.write(data.tail())
 
-    for curr_point_num in range(total_points):
-        curr_turn, i = divmod(curr_point_num, points_per_turn)
-        angle = (curr_turn + 1) * 2 * math.pi * i / points_per_turn
-        radius = curr_point_num / total_points
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        data.append(Point(x, y))
+# Plot stock Data
+fig1 = go.Figure()
+fig1.add_trace(go.Scatter(x=data['Date'], y=data["Open"], name="stock_open"))
+fig1.add_trace(go.Scatter(x=data['Date'], y=data["Close"], name="stock_close"))
+fig1.layout.update(title_text="Time Series data", xaxis_rangeslider_visible=True)
+st.plotly_chart(fig1)
 
-    st.altair_chart(alt.Chart(pd.DataFrame(data), height=500, width=500)
-        .mark_circle(color='#0068c9', opacity=0.5)
-        .encode(x='x:Q', y='y:Q'))
+# Predict future price
+df_train = data[["Data", "Close"]]
+df_train = df_train.rename(columns={"Date": "ds", "Close": "y"})
+
+m = Prophet()
+m.fit(df_train)
+future = m.make_future_dataframe(period=period)
+forecast = m.predict(future)
+
+# Plot forecast
+st.subheader("Forecast data")
+fig2 = plot_plotly(m, forecast)
+st.plotly_chart(fig2)
